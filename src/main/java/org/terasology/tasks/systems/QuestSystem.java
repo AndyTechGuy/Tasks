@@ -36,10 +36,7 @@ import org.terasology.tasks.Status;
 import org.terasology.tasks.Task;
 import org.terasology.tasks.TaskGraph;
 import org.terasology.tasks.components.QuestComponent;
-import org.terasology.tasks.events.BeforeQuestEvent;
-import org.terasology.tasks.events.QuestCompleteEvent;
-import org.terasology.tasks.events.StartTaskEvent;
-import org.terasology.tasks.events.TaskCompletedEvent;
+import org.terasology.tasks.events.*;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Collections2;
@@ -49,7 +46,7 @@ import com.google.common.collect.ListMultimap;
  * This controls the main logic of the quest, and defines what to do with a "quest card"
  */
 @Share(QuestSystem.class)
-@RegisterSystem(RegisterMode.CLIENT)
+@RegisterSystem(RegisterMode.AUTHORITY)
 public class QuestSystem extends BaseComponentSystem {
 
     private static final Logger logger = LoggerFactory.getLogger(QuestSystem.class);
@@ -80,6 +77,7 @@ public class QuestSystem extends BaseComponentSystem {
                 }
             }
         }
+        entity.send(new EntityQuestListInfo(getQuestsFor(entity)));
     }
 
     @ReceiveEvent
@@ -98,6 +96,11 @@ public class QuestSystem extends BaseComponentSystem {
         if (quest.getStatus().isComplete()) {
             entity.send(new QuestCompleteEvent(quest, quest.getStatus().isSuccess()));
         }
+    }
+
+    @ReceiveEvent
+    public void onEntityQuestListRequest(EntityQuestListRequest request, EntityRef entity) {
+        entity.send(new EntityQuestListInfo(getQuestsFor(entity)));
     }
 
     /**

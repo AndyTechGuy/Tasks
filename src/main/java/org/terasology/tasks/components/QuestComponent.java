@@ -17,10 +17,17 @@
 package org.terasology.tasks.components;
 
 import org.terasology.entitySystem.Component;
+import org.terasology.network.Replicate;
 import org.terasology.tasks.TaskGraph;
 
 public class QuestComponent implements Component {
+
+    @Replicate
     public String shortName;
+
+    @Replicate
     public String description;
+
+    @Replicate
     public TaskGraph tasks;
 }

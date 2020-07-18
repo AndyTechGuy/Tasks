@@ -20,9 +20,15 @@ import org.terasology.entitySystem.event.ReceiveEvent;
 import org.terasology.entitySystem.systems.BaseComponentSystem;
 import org.terasology.entitySystem.systems.RegisterMode;
 import org.terasology.entitySystem.systems.RegisterSystem;
+import org.terasology.logic.players.LocalPlayer;
 import org.terasology.math.geom.Rect2f;
 import org.terasology.registry.In;
 import org.terasology.rendering.nui.NUIManager;
+import org.terasology.rendering.nui.widgets.UIList;
+import org.terasology.tasks.Quest;
+import org.terasology.tasks.events.EntityQuestListInfo;
+import org.terasology.tasks.events.EntityQuestListRequest;
+import org.terasology.world.time.WorldTimeEvent;
 
 @RegisterSystem(RegisterMode.CLIENT)
 public class QuestHudSystem extends BaseComponentSystem {
@@ -31,6 +37,9 @@ public class QuestHudSystem extends BaseComponentSystem {
 
     @In
     private NUIManager nuiManager;
+
+    @In
+    private LocalPlayer localPlayer;
 
     private QuestHud questHud;
 
@@ -41,10 +50,28 @@ public class QuestHudSystem extends BaseComponentSystem {
     }
 
     @ReceiveEvent
+    public void onWorldTimeEvent(WorldTimeEvent worldTimeEvent, EntityRef entity) {
+        localPlayer.getClientEntity().send(new EntityQuestListRequest());
+    }
+
+    @ReceiveEvent
     public void onToggleMinimapButton(ToggleQuestsButton event, EntityRef entity) {
         if (event.isDown()) {
             questHud.setVisible(!questHud.isVisible());
             event.consume();
         }
     }
+
+    @ReceiveEvent
+    public void onQuestListInfo(EntityQuestListInfo entityQuestListInfo, EntityRef entity) {
+        if (!entity.equals(localPlayer.getClientEntity())) { // checks if event is intended for a different character; occurs when client is hosting.
+            return;
+        }
+        UIList<Quest> questList = questHud.find("questList", UIList.class);
+
+        if (questList != null) {
+            questList.setList(entityQuestListInfo.questList);
+        }
+    }
+
 }

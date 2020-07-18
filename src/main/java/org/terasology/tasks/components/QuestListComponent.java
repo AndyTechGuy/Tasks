@@ -20,11 +20,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.terasology.entitySystem.Component;
+import org.terasology.network.Replicate;
 
 /**
  * Provides a list of available quests.
  */
 public final class QuestListComponent implements Component {
 
+    @Replicate
     public List<String> questItems = new ArrayList<>();
+
 }
