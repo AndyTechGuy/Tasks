@@ -31,10 +31,7 @@ import org.terasology.logic.inventory.ItemComponent;
 import org.terasology.logic.inventory.events.InventorySlotChangedEvent;
 import org.terasology.logic.inventory.events.InventorySlotStackSizeChangedEvent;
 import org.terasology.network.ClientComponent;
-import org.terasology.tasks.CollectBlocksTask;
-import org.terasology.tasks.Quest;
-import org.terasology.tasks.Status;
-import org.terasology.tasks.TaskGraph;
+import org.terasology.tasks.*;
 import org.terasology.tasks.events.StartTaskEvent;
 import org.terasology.tasks.events.TaskCompletedEvent;
 
@@ -44,7 +41,7 @@ import org.terasology.tasks.events.TaskCompletedEvent;
 @RegisterSystem(RegisterMode.AUTHORITY)
 public class CollectBlocksTaskSystem extends BaseComponentSystem {
 
-    private final Map<CollectBlocksTask, Quest> tasks = new LinkedHashMap<>();
+    private final Map<Quest, CollectBlocksTask> tasks = new LinkedHashMap<>();
 
     @ReceiveEvent(components = {ClientComponent.class})
     public void onStartTask(StartTaskEvent event, EntityRef entity) {
@@ -60,13 +57,13 @@ public class CollectBlocksTaskSystem extends BaseComponentSystem {
                 }
             }
             task.setAmount(count);
-            tasks.put(task, event.getQuest());
+            tasks.put(event.getQuest(), task);
         }
     }
 
     @ReceiveEvent
     public void onCompletedTask(TaskCompletedEvent event, EntityRef entity) {
-        tasks.remove(event.getTask());
+        tasks.remove(event.getQuest());
     }
 
     @ReceiveEvent(components = {InventoryComponent.class})
@@ -94,14 +91,14 @@ public class CollectBlocksTaskSystem extends BaseComponentSystem {
 
     private void onInventoryChange(EntityRef charEntity, String stackId, int amountChange) {
 
-        Iterator<Entry<CollectBlocksTask, Quest>> it = tasks.entrySet().iterator();
+        Iterator<Entry<Quest, CollectBlocksTask>> it = tasks.entrySet().iterator();
         while (it.hasNext()) {
-            Entry<CollectBlocksTask, Quest> entry = it.next();
-            CollectBlocksTask task = entry.getKey();
+            Entry<Quest, CollectBlocksTask> entry = it.next();
+            CollectBlocksTask task = entry.getValue();
 
             // consider using InventoryUtils.isSameItem(EntityRef, EntityRef)
             if (stackId.equalsIgnoreCase(task.getItemId())) {
-                TaskGraph taskGraph = entry.getValue().getTaskGraph();
+                TaskGraph taskGraph = entry.getKey().getTaskGraph();
 
                 Status prevStatus = taskGraph.getTaskStatus(task);
 
@@ -111,7 +108,7 @@ public class CollectBlocksTaskSystem extends BaseComponentSystem {
                 if (prevStatus != status && status.isComplete()) {
                     it.remove();
                     EntityRef client = charEntity.getOwner();
-                    client.send(new TaskCompletedEvent(entry.getValue(), task, status.isSuccess()));
+                    client.send(new TaskCompletedEvent(entry.getKey(), task, status.isSuccess()));
                 }
             }
         }

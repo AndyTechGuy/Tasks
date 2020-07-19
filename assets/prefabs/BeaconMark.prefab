@@ -23,5 +23,6 @@
     "CapsuleShape" : {
         "radius" : 2,
         "height" : 5
-    }
+    },
+    "Network": {}
 }
