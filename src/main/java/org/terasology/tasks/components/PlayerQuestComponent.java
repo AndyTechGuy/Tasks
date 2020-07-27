@@ -18,16 +18,34 @@ package org.terasology.tasks.components;
 
 import org.terasology.entitySystem.Component;
 import org.terasology.network.Replicate;
+import org.terasology.tasks.Quest;
+import org.terasology.tasks.Task;
 import org.terasology.tasks.TaskGraph;
 
-public class QuestComponent implements Component {
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
-    @Replicate
-    public String shortName;
+/**
+ * Attaches to the player and stores the quests that they are completing/have already completed.
+ */
+public class PlayerQuestComponent implements Component {
 
+    /**
+     * The list of quests that this player is taking on/has finished.
+     */
     @Replicate
-    public String description;
+    public List<Quest> questList;
 
+    /**
+     * The list of active tasks that this player is taking on.
+     */
     @Replicate
-    public TaskGraph tasks;
+    public Map<Quest, Task> activeTaskList;
+
+    public PlayerQuestComponent() {
+        questList = new ArrayList<Quest>();
+        activeTaskList = new HashMap<Quest, Task>();
+    }
 }

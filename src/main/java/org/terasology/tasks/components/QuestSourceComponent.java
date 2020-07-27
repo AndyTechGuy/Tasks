@@ -18,6 +18,9 @@ package org.terasology.tasks.components;
 import org.terasology.entitySystem.Component;
 import org.terasology.entitySystem.entity.EntityRef;
 
+/**
+ * Attaches to a quest item and provides a reference to the quest retrieval point that the quest item came from.
+ */
 public class QuestSourceComponent implements Component {
     public EntityRef source;
 

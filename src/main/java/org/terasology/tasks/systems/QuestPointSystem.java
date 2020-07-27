@@ -16,6 +16,7 @@
 
 package org.terasology.tasks.systems;
 
+import org.terasology.tasks.components.QuestItemComponent;
 import org.terasology.tasks.components.QuestSourceComponent;
 import org.terasology.utilities.Assets;
 import org.terasology.entitySystem.entity.EntityManager;
@@ -30,7 +31,7 @@ import org.terasology.logic.inventory.InventoryManager;
 import org.terasology.logic.inventory.ItemComponent;
 import org.terasology.physics.events.CollideEvent;
 import org.terasology.registry.In;
-import org.terasology.tasks.components.QuestComponent;
+import org.terasology.tasks.components.PlayerQuestComponent;
 import org.terasology.tasks.components.QuestListComponent;
 
 /**
@@ -47,13 +48,16 @@ public class QuestPointSystem extends BaseComponentSystem {
 
     @ReceiveEvent(components = QuestListComponent.class)
     public void onCollision(CollideEvent event, EntityRef questPoint) {
+        if(questPoint.equals(EntityRef.NULL)) {
+            return;
+        }
 
         EntityRef charEnt = event.getOtherEntity();
         InventoryComponent inventory = charEnt.getComponent(InventoryComponent.class);
         if (inventory != null) {
             for (EntityRef itemRef : inventory.itemSlots) {
-                QuestComponent quest = itemRef.getComponent(QuestComponent.class);
-                if (quest != null) {
+                QuestItemComponent questItem = itemRef.getComponent(QuestItemComponent.class);
+                if (questItem != null) {
                     return;
                 }
             }

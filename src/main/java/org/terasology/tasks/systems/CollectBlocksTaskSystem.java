@@ -17,10 +17,9 @@
 package org.terasology.tasks.systems;
 
 import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Map.Entry;
 
+import org.terasology.entitySystem.entity.EntityManager;
 import org.terasology.entitySystem.entity.EntityRef;
 import org.terasology.entitySystem.event.ReceiveEvent;
 import org.terasology.entitySystem.systems.BaseComponentSystem;
@@ -31,7 +30,9 @@ import org.terasology.logic.inventory.ItemComponent;
 import org.terasology.logic.inventory.events.InventorySlotChangedEvent;
 import org.terasology.logic.inventory.events.InventorySlotStackSizeChangedEvent;
 import org.terasology.network.ClientComponent;
+import org.terasology.registry.In;
 import org.terasology.tasks.*;
+import org.terasology.tasks.components.PlayerQuestComponent;
 import org.terasology.tasks.events.StartTaskEvent;
 import org.terasology.tasks.events.TaskCompletedEvent;
 
@@ -41,7 +42,8 @@ import org.terasology.tasks.events.TaskCompletedEvent;
 @RegisterSystem(RegisterMode.AUTHORITY)
 public class CollectBlocksTaskSystem extends BaseComponentSystem {
 
-    private final Map<Quest, CollectBlocksTask> tasks = new LinkedHashMap<>();
+    @In
+    private EntityManager entityManager;
 
     @ReceiveEvent(components = {ClientComponent.class})
     public void onStartTask(StartTaskEvent event, EntityRef entity) {
@@ -57,13 +59,7 @@ public class CollectBlocksTaskSystem extends BaseComponentSystem {
                 }
             }
             task.setAmount(count);
-            tasks.put(event.getQuest(), task);
         }
-    }
-
-    @ReceiveEvent
-    public void onCompletedTask(TaskCompletedEvent event, EntityRef entity) {
-        tasks.remove(event.getQuest());
     }
 
     @ReceiveEvent(components = {InventoryComponent.class})
@@ -90,28 +86,25 @@ public class CollectBlocksTaskSystem extends BaseComponentSystem {
     }
 
     private void onInventoryChange(EntityRef charEntity, String stackId, int amountChange) {
+        PlayerQuestComponent playerQuestComponent = charEntity.getOwner().getComponent(PlayerQuestComponent.class);
+        playerQuestComponent.activeTaskList.entrySet()
+            .stream()
+            .filter(e -> { return e.getValue() instanceof CollectBlocksTask; })
+            .forEach(e -> {
+                CollectBlocksTask collectBlocksTask = (CollectBlocksTask) e.getValue();
+                TaskGraph taskGraph = e.getKey().getTaskGraph();
+                Status prevStatus = taskGraph.getTaskStatus(collectBlocksTask);
 
-        Iterator<Entry<Quest, CollectBlocksTask>> it = tasks.entrySet().iterator();
-        while (it.hasNext()) {
-            Entry<Quest, CollectBlocksTask> entry = it.next();
-            CollectBlocksTask task = entry.getValue();
-
-            // consider using InventoryUtils.isSameItem(EntityRef, EntityRef)
-            if (stackId.equalsIgnoreCase(task.getItemId())) {
-                TaskGraph taskGraph = entry.getKey().getTaskGraph();
-
-                Status prevStatus = taskGraph.getTaskStatus(task);
-
-                task.setAmount(task.getAmount() + amountChange);
-
-                Status status = taskGraph.getTaskStatus(task);
-                if (prevStatus != status && status.isComplete()) {
-                    it.remove();
-                    EntityRef client = charEntity.getOwner();
-                    client.send(new TaskCompletedEvent(entry.getKey(), task, status.isSuccess()));
+                if (stackId.equalsIgnoreCase(collectBlocksTask.getItemId())) {
+                    collectBlocksTask.setAmount(collectBlocksTask.getAmount() + amountChange);
                 }
-            }
-        }
 
+                Status status = taskGraph.getTaskStatus(collectBlocksTask);
+                if (status != prevStatus && status.isComplete()) {
+                    EntityRef entity = e.getKey().getEntity();
+                    entity.send(new TaskCompletedEvent(e.getKey(), collectBlocksTask, status.isSuccess()));
+                }
+            });
+        charEntity.saveComponent(playerQuestComponent);
     }
 }

@@ -16,6 +16,7 @@
 
 package org.terasology.tasks.events;
 
+import org.terasology.entitySystem.entity.EntityRef;
 import org.terasology.entitySystem.event.AbstractConsumableEvent;
 
 /**
@@ -25,12 +26,14 @@ import org.terasology.entitySystem.event.AbstractConsumableEvent;
 public class BeforeQuestEvent extends AbstractConsumableEvent {
 
     private String name;
+    public EntityRef player;
 
     /**
      * @param name the quest the task is part of
      */
-    public BeforeQuestEvent(String name) {
+    public BeforeQuestEvent(EntityRef player, String name) {
         this.name = name;
+        this.player = player;
     }
 
     /**

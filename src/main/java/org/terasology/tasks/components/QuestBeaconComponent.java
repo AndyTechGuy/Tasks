@@ -18,6 +18,14 @@ package org.terasology.tasks.components;
 
 import org.terasology.entitySystem.Component;
 
+/**
+ * Indicates a quest travel point. Colliding with an object containing this component will complete an
+ * {@link org.terasology.tasks.GoToBeaconTask} that matches this beacon Id.
+ */
 public class QuestBeaconComponent implements Component {
+
+    /**
+     * The identifying name of this beacon. Used to match this beacon with a particular beacon task.
+     */
     public String beaconId;
 }

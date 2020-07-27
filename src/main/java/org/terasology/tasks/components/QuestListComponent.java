@@ -23,10 +23,14 @@ import org.terasology.entitySystem.Component;
 import org.terasology.network.Replicate;
 
 /**
- * Provides a list of available quests.
+ * Attaches to a quest retrieval point, and provides a list of available quests items. When the quest point is interacted
+ * with, the player recieves every quest item in the quest item list.
  */
 public final class QuestListComponent implements Component {
 
+    /**
+     * The list of quest items given by this point, referenced by item IDs.
+     */
     @Replicate
     public List<String> questItems = new ArrayList<>();
 

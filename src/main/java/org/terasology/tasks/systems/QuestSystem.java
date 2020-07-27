@@ -29,13 +29,15 @@ import org.terasology.entitySystem.systems.BaseComponentSystem;
 import org.terasology.entitySystem.systems.RegisterMode;
 import org.terasology.entitySystem.systems.RegisterSystem;
 import org.terasology.logic.common.ActivateEvent;
+import org.terasology.logic.players.event.OnPlayerSpawnedEvent;
 import org.terasology.registry.Share;
 import org.terasology.tasks.DefaultQuest;
 import org.terasology.tasks.Quest;
 import org.terasology.tasks.Status;
 import org.terasology.tasks.Task;
 import org.terasology.tasks.TaskGraph;
-import org.terasology.tasks.components.QuestComponent;
+import org.terasology.tasks.components.PlayerQuestComponent;
+import org.terasology.tasks.components.QuestItemComponent;
 import org.terasology.tasks.events.*;
 
 import com.google.common.collect.ArrayListMultimap;
@@ -51,43 +53,52 @@ public class QuestSystem extends BaseComponentSystem {
 
     private static final Logger logger = LoggerFactory.getLogger(QuestSystem.class);
 
-    private final ListMultimap<EntityRef, Quest> quests = ArrayListMultimap.create();
-    private final Collection<Quest> activeQuestView = Collections2.filter(quests.values(),
-            quest -> quest.getStatus() == Status.ACTIVE);
+    @ReceiveEvent
+    public void onPlayerJoin(OnPlayerSpawnedEvent onPlayerSpawnedEvent, EntityRef player) {
+        if (!player.getOwner().hasComponent(PlayerQuestComponent.class)) {
+            player.getOwner().addComponent(new PlayerQuestComponent());
+        }
+    }
 
     /**
      * This updates the quest card variables for tasks calls.
      */
-    @ReceiveEvent(components = {QuestComponent.class})
+    @ReceiveEvent(components = {QuestItemComponent.class})
     public void onActivate(ActivateEvent event, EntityRef questItem) {
-        QuestComponent questComp = questItem.getComponent(QuestComponent.class);
+        QuestItemComponent questComp = questItem.getComponent(QuestItemComponent.class);
         EntityRef entity = event.getInstigator().getOwner();
+        PlayerQuestComponent playerQuestComponent = entity.getComponent(PlayerQuestComponent.class);
 
-        BeforeQuestEvent beforeQuestEvent = questItem.send(new BeforeQuestEvent(questComp.shortName));
+        BeforeQuestEvent beforeQuestEvent = questItem.send(new BeforeQuestEvent(entity, questComp.shortName));
         if (!beforeQuestEvent.isConsumed()) {
             TaskGraph taskGraph = questComp.tasks;
-
             DefaultQuest quest = new DefaultQuest(entity, questComp.shortName, questComp.description, taskGraph);
-            quests.put(entity, quest);
+            playerQuestComponent.questList.add(quest);
 
             for (Task task : taskGraph) {
                 if (taskGraph.getTaskStatus(task) != Status.PENDING) {
+                    playerQuestComponent.activeTaskList.put(quest, task);
                     logger.info("Starting task {}", task);
                     entity.send(new StartTaskEvent(quest, task));
                 }
             }
         }
-        entity.send(new EntityQuestListInfo(getQuestsFor(entity)));
+        entity.saveComponent(playerQuestComponent);
     }
 
     @ReceiveEvent
     public void onTaskComplete(TaskCompletedEvent event, EntityRef entity) {
         Quest quest = event.getQuest();
         logger.info("Task {} complete", event.getTask());
+        PlayerQuestComponent playerQuestComponent = entity.getComponent(PlayerQuestComponent.class);
+
+        playerQuestComponent.activeTaskList.remove(event.getQuest(), event.getTask());
         TaskGraph taskGraph = quest.getTaskGraph();
         for (Task task : taskGraph) {
+            entity.send(new QuestStartedEvent(quest));
             if (taskGraph.getDependencies(task).contains(event.getTask())) {
                 if (taskGraph.getTaskStatus(task) != Status.PENDING) {
+                    playerQuestComponent.activeTaskList.put(quest, task);
                     logger.info("Starting task {}", task);
                     entity.send(new StartTaskEvent(quest, task));
                 }
@@ -96,64 +107,6 @@ public class QuestSystem extends BaseComponentSystem {
         if (quest.getStatus().isComplete()) {
             entity.send(new QuestCompleteEvent(quest, quest.getStatus().isSuccess()));
         }
-    }
-
-    @ReceiveEvent
-    public void onEntityQuestListRequest(EntityQuestListRequest request, EntityRef entity) {
-        entity.send(new EntityQuestListInfo(getQuestsFor(entity)));
-    }
-
-    /**
-     * @return an unmodifiable map of all known quests.
-     */
-    public Collection<Quest> getQuests() {
-        return Collections.unmodifiableCollection(quests.values());
-    }
-
-    /**
-     * @param entity the entity of interest
-     * @return an unmodifiable map of all known quests for a given entity.
-     */
-    public List<Quest> getQuestsFor(EntityRef entity) {
-        return Collections.unmodifiableList(quests.get(entity));
-    }
-
-    /**
-     * @return an unmodifiable map of all active quests (Status == {@link Status#ACTIVE}).
-     */
-    public Collection<Quest> getActiveQuests() {
-        return Collections.unmodifiableCollection(activeQuestView);
-    }
-
-    /**
-     * @param shortName the case-sensitive short name
-     * @return the first matching quest if it exists
-     */
-    public Optional<Quest> findQuest(String shortName) {
-        // try exact match first
-        for (Quest q : quests.values()) {
-            if (q.getShortName().equals(shortName)) {
-                return Optional.of(q);
-            }
-        }
-
-        // then try ignoring case
-        for (Quest q : quests.values()) {
-            if (q.getShortName().equalsIgnoreCase(shortName)) {
-                return Optional.of(q);
-            }
-        }
-        return Optional.empty();
-    }
-
-    /**
-     * @param quest the quest to complete
-     * @param success if the quest was successful
-     */
-    public void removeQuest(Quest quest, boolean success) {
-        for (EntityRef ref : quests.keys()) {
-            quests.remove(ref, quest);
-            break;
-        }
+        entity.saveComponent(playerQuestComponent);
     }
 }

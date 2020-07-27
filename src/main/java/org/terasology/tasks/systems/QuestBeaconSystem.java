@@ -21,16 +21,18 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 
+import org.terasology.entitySystem.entity.EntityManager;
 import org.terasology.entitySystem.entity.EntityRef;
 import org.terasology.entitySystem.event.ReceiveEvent;
 import org.terasology.entitySystem.systems.BaseComponentSystem;
 import org.terasology.entitySystem.systems.RegisterMode;
 import org.terasology.entitySystem.systems.RegisterSystem;
+import org.terasology.logic.location.Location;
+import org.terasology.logic.location.LocationComponent;
 import org.terasology.physics.events.CollideEvent;
-import org.terasology.tasks.GoToBeaconTask;
-import org.terasology.tasks.Quest;
-import org.terasology.tasks.Status;
-import org.terasology.tasks.TaskGraph;
+import org.terasology.registry.In;
+import org.terasology.tasks.*;
+import org.terasology.tasks.components.PlayerQuestComponent;
 import org.terasology.tasks.components.QuestBeaconComponent;
 import org.terasology.tasks.events.StartTaskEvent;
 import org.terasology.tasks.events.TaskCompletedEvent;
@@ -41,46 +43,37 @@ import org.terasology.tasks.events.TaskCompletedEvent;
 @RegisterSystem(RegisterMode.AUTHORITY)
 public class QuestBeaconSystem extends BaseComponentSystem {
 
+    @In
+    private EntityManager entityManager;
+
     private final Map<GoToBeaconTask, Quest> tasks = new LinkedHashMap<>();
-
-    @ReceiveEvent
-    public void onStartTask(StartTaskEvent event, EntityRef entity) {
-        if (event.getTask() instanceof GoToBeaconTask) {
-            GoToBeaconTask task = (GoToBeaconTask) event.getTask();
-            tasks.put(task, event.getQuest());
-        }
-    }
-
-    @ReceiveEvent
-    public void onCompletedTask(TaskCompletedEvent event, EntityRef entity) {
-        tasks.remove(event.getTask());
-    }
 
     @ReceiveEvent(components = QuestBeaconComponent.class)
     public void onCollision(CollideEvent event, EntityRef beacon) {
         EntityRef charEnt = event.getOtherEntity();
         QuestBeaconComponent component = beacon.getComponent(QuestBeaconComponent.class);
 
-        Iterator<Entry<GoToBeaconTask, Quest>> it = tasks.entrySet().iterator();
-        while (it.hasNext()) {
-            Entry<GoToBeaconTask, Quest> entry = it.next();
-            GoToBeaconTask task = entry.getKey();
-            if (task.getTargetBeaconId().equals(component.beaconId)) {
-                TaskGraph taskGraph = entry.getValue().getTaskGraph();
-                Status prevStatus = taskGraph.getTaskStatus(task);
+        PlayerQuestComponent playerQuestComponent = event.getOtherEntity().getOwner().getComponent(PlayerQuestComponent.class);
+        playerQuestComponent.activeTaskList.entrySet()
+                .stream()
+                .filter(e -> { return e.getValue() instanceof GoToBeaconTask; })
+                .forEach(e -> {
+                    GoToBeaconTask goToBeaconTask = (GoToBeaconTask) e.getValue();
 
-                if (prevStatus == Status.ACTIVE) {
-                    task.targetReached();
-                }
+                    if (goToBeaconTask.getTargetBeaconId().equals(component.beaconId)) {
+                        TaskGraph taskGraph = e.getKey().getTaskGraph();
+                        Status prevStatus = taskGraph.getTaskStatus(goToBeaconTask);
 
-                Status status = taskGraph.getTaskStatus(task);
-                if (prevStatus != status && status.isComplete()) {
-                    TaskCompletedEvent taskCompletedEvent = new TaskCompletedEvent(tasks.get(task), task, status.isSuccess());
-                    it.remove();
-                    EntityRef client = charEnt.getOwner();
-                    client.send(taskCompletedEvent);
-                }
-            }
-        }
+                        if (prevStatus == Status.ACTIVE) {
+                            goToBeaconTask.targetReached();
+                        }
+
+                        Status status = taskGraph.getTaskStatus(goToBeaconTask);
+                        if (status != prevStatus && status.isComplete()) {
+                            EntityRef entity = e.getKey().getEntity();
+                            entity.send(new TaskCompletedEvent(e.getKey(), goToBeaconTask, status.isSuccess()));
+                        }
+                    }
+                });
     }
 }

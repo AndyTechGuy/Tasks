@@ -15,19 +15,22 @@
  */
 package org.terasology.tasks.gui;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.terasology.entitySystem.entity.EntityRef;
+import org.terasology.entitySystem.entity.lifecycleEvents.OnChangedComponent;
 import org.terasology.entitySystem.event.ReceiveEvent;
 import org.terasology.entitySystem.systems.BaseComponentSystem;
 import org.terasology.entitySystem.systems.RegisterMode;
 import org.terasology.entitySystem.systems.RegisterSystem;
 import org.terasology.logic.players.LocalPlayer;
 import org.terasology.math.geom.Rect2f;
+import org.terasology.protobuf.EntityData;
 import org.terasology.registry.In;
 import org.terasology.rendering.nui.NUIManager;
 import org.terasology.rendering.nui.widgets.UIList;
 import org.terasology.tasks.Quest;
-import org.terasology.tasks.events.EntityQuestListInfo;
-import org.terasology.tasks.events.EntityQuestListRequest;
+import org.terasology.tasks.components.PlayerQuestComponent;
 import org.terasology.world.time.WorldTimeEvent;
 
 @RegisterSystem(RegisterMode.CLIENT)
@@ -43,35 +46,44 @@ public class QuestHudSystem extends BaseComponentSystem {
 
     private QuestHud questHud;
 
+    private static final Logger logger = LoggerFactory.getLogger(QuestHudSystem.class);
+
     @Override
     public void initialise() {
         Rect2f rc = Rect2f.createFromMinAndSize(0, 0, 1, 1);
         questHud = nuiManager.getHUD().addHUDElement(HUD_ELEMENT_ID, QuestHud.class, rc);
     }
 
+    @ReceiveEvent(components = {PlayerQuestComponent.class})
+    public void onComponentChanged(OnChangedComponent onChangedComponent, EntityRef entity) {
+        updateQuestInformation();
+    }
+
     @ReceiveEvent
     public void onWorldTimeEvent(WorldTimeEvent worldTimeEvent, EntityRef entity) {
-        localPlayer.getClientEntity().send(new EntityQuestListRequest());
+        updateQuestInformation();
     }
 
     @ReceiveEvent
     public void onToggleMinimapButton(ToggleQuestsButton event, EntityRef entity) {
         if (event.isDown()) {
             questHud.setVisible(!questHud.isVisible());
+            updateQuestInformation();
             event.consume();
         }
     }
 
-    @ReceiveEvent
-    public void onQuestListInfo(EntityQuestListInfo entityQuestListInfo, EntityRef entity) {
-        if (!entity.equals(localPlayer.getClientEntity())) { // checks if event is intended for a different character; occurs when client is hosting.
+    private void updateQuestInformation() {
+        PlayerQuestComponent playerQuestComponent = localPlayer.getClientEntity().getComponent(PlayerQuestComponent.class);
+
+        if (playerQuestComponent == null) {
+            logger.warn("Player doesn't have a PlayerQuestComponent!");
+            questHud.setVisible(false);
             return;
         }
-        UIList<Quest> questList = questHud.find("questList", UIList.class);
 
-        if (questList != null) {
-            questList.setList(entityQuestListInfo.questList);
-        }
+        UIList<Quest> questListUI = questHud.find("questList", UIList.class);
+        questListUI.setList(playerQuestComponent.questList);
     }
 
 }

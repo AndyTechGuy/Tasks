@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 
 import org.terasology.engine.Time;
+import org.terasology.entitySystem.entity.EntityManager;
 import org.terasology.entitySystem.entity.EntityRef;
 import org.terasology.entitySystem.event.ReceiveEvent;
 import org.terasology.entitySystem.systems.BaseComponentSystem;
@@ -34,6 +35,7 @@ import org.terasology.tasks.Status;
 import org.terasology.tasks.Task;
 import org.terasology.tasks.TaskGraph;
 import org.terasology.tasks.TimeConstraintTask;
+import org.terasology.tasks.components.PlayerQuestComponent;
 import org.terasology.tasks.events.StartTaskEvent;
 import org.terasology.tasks.events.TaskCompletedEvent;
 
@@ -44,53 +46,43 @@ import org.terasology.tasks.events.TaskCompletedEvent;
 public class TimedTaskSystem extends BaseComponentSystem implements UpdateSubscriberSystem {
 
     @In
+    private EntityManager entityManager;
+
+    @In
     private Time time;
 
-    private final Map<TimeConstraintTask, Quest> questRefs = new LinkedHashMap<>();
+    private float cycleTime;
 
     @ReceiveEvent
     public void onStartTask(StartTaskEvent event, EntityRef entity) {
         if (event.getTask() instanceof TimeConstraintTask) {
             TimeConstraintTask task = (TimeConstraintTask) event.getTask();
-            questRefs.put(task, event.getQuest());
             task.startTimer(time.getGameTime());
-        }
-    }
-
-    @ReceiveEvent
-    public void onCompletedTask(TaskCompletedEvent event, EntityRef entity) {
-        Task task = event.getTask();
-        Iterator<Entry<TimeConstraintTask, Quest>> it = questRefs.entrySet().iterator();
-        while (it.hasNext()) {
-            Entry<TimeConstraintTask, Quest> entry = it.next();
-            TaskGraph taskGraph = entry.getValue().getTaskGraph();
-            if (taskGraph.getDependencies(task).contains(entry.getKey())) {
-                it.remove();
-            }
         }
     }
 
     @Override
     public void update(float delta) {
-        Iterator<Entry<TimeConstraintTask, Quest>> it = questRefs.entrySet().iterator();
-        while (it.hasNext()) {
-            Entry<TimeConstraintTask, Quest> entry = it.next();
-            TimeConstraintTask task = entry.getKey();
+        for (EntityRef entityRef : entityManager.getEntitiesWith(PlayerQuestComponent.class)) {
+            PlayerQuestComponent playerQuestComponent = entityRef.getComponent(PlayerQuestComponent.class);
+            playerQuestComponent.activeTaskList.entrySet()
+                    .stream()
+                    .filter(e -> { return e.getValue() instanceof TimeConstraintTask; })
+                    .forEach(e -> {
+                        TimeConstraintTask timeConstraintTask = (TimeConstraintTask) e.getValue();
+                        TaskGraph taskGraph = e.getKey().getTaskGraph();
+                        Status prevStatus = taskGraph.getTaskStatus(timeConstraintTask);
 
-            TaskGraph taskGraph = entry.getValue().getTaskGraph();
-            Status prevStatus = taskGraph.getTaskStatus(task);
+                        if (prevStatus == Status.SUCCEEDED) {
+                            timeConstraintTask.setTime(time.getGameTime());
+                        }
 
-            if (prevStatus == Status.SUCCEEDED) {
-                task.setTime(time.getGameTime());
-            }
-
-            Status status = taskGraph.getTaskStatus(task);
-            if (status != prevStatus && status.isComplete()) {
-                Quest quest = entry.getValue();
-                EntityRef entity = quest.getEntity();
-                entity.send(new TaskCompletedEvent(quest, task, status.isSuccess()));
-                it.remove();
-            }
+                        Status status = taskGraph.getTaskStatus(timeConstraintTask);
+                        if (status != prevStatus && status.isComplete()) {
+                            EntityRef entity = e.getKey().getEntity();
+                            entity.send(new TaskCompletedEvent(e.getKey(), timeConstraintTask, status.isSuccess()));
+                        }
+                    });
         }
     }
 }
