@@ -16,11 +16,25 @@
 
 package org.terasology.tasks.components;
 
+import com.google.common.collect.Lists;
 import org.terasology.entitySystem.Component;
-import org.terasology.tasks.TaskGraph;
+import org.terasology.entitySystem.entity.EntityRef;
+import org.terasology.tasks.Status;
+
+import java.util.List;
 
 public class QuestComponent implements Component {
     public String shortName;
     public String description;
-    public TaskGraph tasks;
+
+    public Status questStatus = Status.PENDING;
+
+    public List<List<String>> taskDef;
+
+    public List<List<String>> dependencyDef;
+
+    public List<EntityRef> taskList = Lists.newArrayList();
+
+    public QuestComponent() { }
+
 }

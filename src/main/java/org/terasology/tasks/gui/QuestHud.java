@@ -24,36 +24,27 @@ import org.terasology.registry.In;
 import org.terasology.rendering.nui.databinding.ReadOnlyBinding;
 import org.terasology.rendering.nui.layers.hud.CoreHudWidget;
 import org.terasology.rendering.nui.widgets.UIList;
-import org.terasology.tasks.Quest;
-import org.terasology.tasks.systems.QuestSystem;
+import org.terasology.tasks.systems.QuestAuthoritySystem;
 
 public class QuestHud extends CoreHudWidget {
-    private UIList<Quest> questList;
+    private UIList<EntityRef> questList;
 
     @In
-    private QuestSystem questSystem;
+    private QuestAuthoritySystem questAuthoritySystem;
 
     @In
     private LocalPlayer localPlayer;
 
     @Override
     public void initialise() {
-
-//        UILabel title = find("listTitle", UILabel.class);
-
         questList = find("questList", UIList.class);
         if (questList != null) {
             questList.setItemRenderer(new QuestRenderer());
-            questList.bindList(
-                    new ReadOnlyBinding<List<Quest>>() {
-                        @Override
-                        public List<Quest> get() {
-                            EntityRef clientEntity = localPlayer.getClientEntity();
-                            List<Quest> quests = questSystem.getQuestsFor(clientEntity);
-                            return new ArrayList<>(quests);
-                        }
-                    });
         }
+    }
+
+    public UIList<EntityRef> getQuestList() {
+        return questList;
     }
 }
 

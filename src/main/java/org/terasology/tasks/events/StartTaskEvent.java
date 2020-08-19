@@ -17,37 +17,18 @@
 package org.terasology.tasks.events;
 
 import org.terasology.entitySystem.event.Event;
-import org.terasology.tasks.Quest;
-import org.terasology.tasks.Task;
+import org.terasology.tasks.components.TaskComponent;
 
 /**
  *
  */
 public class StartTaskEvent implements Event {
 
-    private final Task task;
-    private final Quest quest;
+    public TaskComponent taskComponent;
 
-    /**
-     * @param quest the quest the task is part of
-     * @param task the completed task
-     */
-    public StartTaskEvent(Quest quest, Task task) {
-        this.task = task;
-        this.quest = quest;
+    public StartTaskEvent(TaskComponent taskComponent) {
+        this.taskComponent = taskComponent;
     }
 
-    /**
-     * @return the quest the task is part of
-     */
-    public Quest getQuest() {
-        return quest;
-    }
-
-    /**
-     * @return the completed task
-     */
-    public Task getTask() {
-        return task;
-    }
+    public StartTaskEvent() { }
 }

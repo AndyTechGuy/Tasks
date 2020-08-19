@@ -16,27 +16,18 @@
 
 package org.terasology.tasks.events;
 
+import org.terasology.entitySystem.entity.EntityRef;
 import org.terasology.entitySystem.event.Event;
-import org.terasology.tasks.Quest;
 
 /**
  *
  */
 public class QuestStartedEvent implements Event {
 
-    private final Quest quest;
+    public EntityRef questEntity;
 
-    /**
-     * @param quest the quest the task is part of
-     */
-    public QuestStartedEvent(Quest quest) {
-        this.quest = quest;
+    public QuestStartedEvent(EntityRef questEntity) {
+        this.questEntity = questEntity;
     }
 
-    /**
-     * @return the quest the completed quest
-     */
-    public Quest getQuest() {
-        return quest;
-    }
 }

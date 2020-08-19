@@ -1,0 +1,15 @@
+{
+    "Task": {
+        "description": "Get me some meat!"
+    },
+    "CollectBlocks": {
+        "itemId": "WildAnimals:meat",
+        "targetAmount": 5,
+        "destroyItemsOnComplete": true
+    },
+    "TimedTask": {
+        "targetTime": 30,
+        "timerOn": true
+    },
+    "Network": {}
+}

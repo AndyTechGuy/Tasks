@@ -1,0 +1,14 @@
+{
+    "Quest": {
+        "shortName": "TestQuest",
+        "description": "Gather some meat for me.",
+        "taskDef": [
+            ["gatherMeatTask", "Tasks:GatherMeatTask"],
+            ["gatherMeatTask2", "Tasks:GatherMeatTask"]
+        ],
+        "dependencyDef": [
+            ["gatherMeatTask2", "gatherMeatTask"]
+        ]
+    },
+    "Network": {}
+}

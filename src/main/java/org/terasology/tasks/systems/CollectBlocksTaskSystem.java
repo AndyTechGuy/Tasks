@@ -21,22 +21,28 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 
+import org.terasology.entitySystem.entity.EntityManager;
 import org.terasology.entitySystem.entity.EntityRef;
+import org.terasology.entitySystem.event.EventPriority;
 import org.terasology.entitySystem.event.ReceiveEvent;
 import org.terasology.entitySystem.systems.BaseComponentSystem;
 import org.terasology.entitySystem.systems.RegisterMode;
 import org.terasology.entitySystem.systems.RegisterSystem;
 import org.terasology.logic.inventory.InventoryComponent;
+import org.terasology.logic.inventory.InventoryManager;
 import org.terasology.logic.inventory.ItemComponent;
 import org.terasology.logic.inventory.events.InventorySlotChangedEvent;
 import org.terasology.logic.inventory.events.InventorySlotStackSizeChangedEvent;
 import org.terasology.network.ClientComponent;
-import org.terasology.tasks.CollectBlocksTask;
-import org.terasology.tasks.Quest;
+import org.terasology.registry.In;
 import org.terasology.tasks.Status;
-import org.terasology.tasks.TaskGraph;
+import org.terasology.tasks.components.CollectBlocksTaskComponent;
+import org.terasology.tasks.components.QuestComponent;
+import org.terasology.tasks.components.TaskComponent;
+import org.terasology.tasks.events.EndTaskEvent;
 import org.terasology.tasks.events.StartTaskEvent;
 import org.terasology.tasks.events.TaskCompletedEvent;
+import org.terasology.world.block.items.BlockItemComponent;
 
 /**
  *
@@ -44,29 +50,29 @@ import org.terasology.tasks.events.TaskCompletedEvent;
 @RegisterSystem(RegisterMode.AUTHORITY)
 public class CollectBlocksTaskSystem extends BaseComponentSystem {
 
-    private final Map<CollectBlocksTask, Quest> tasks = new LinkedHashMap<>();
+    @In
+    private InventoryManager inventoryManager;
 
-    @ReceiveEvent(components = {ClientComponent.class})
-    public void onStartTask(StartTaskEvent event, EntityRef entity) {
-        if (event.getTask() instanceof CollectBlocksTask) {
-            CollectBlocksTask task = (CollectBlocksTask) event.getTask();
-            EntityRef charEntity = entity.getComponent(ClientComponent.class).character;
-            InventoryComponent inventory = charEntity.getComponent(InventoryComponent.class);
-            int count = 0;
-            for (EntityRef itemRef : inventory.itemSlots) {
-                ItemComponent item = itemRef.getComponent(ItemComponent.class);
-                if (item != null && item.stackId.equalsIgnoreCase(task.getItemId())) {
-                    count += item.stackCount;
-                }
-            }
-            task.setAmount(count);
-            tasks.put(task, event.getQuest());
-        }
-    }
+    @In
+    private EntityManager entityManager;
 
     @ReceiveEvent
-    public void onCompletedTask(TaskCompletedEvent event, EntityRef entity) {
-        tasks.remove(event.getTask());
+    public void onTaskStart(StartTaskEvent event, EntityRef taskEntity) {
+        if (taskEntity.hasComponent(CollectBlocksTaskComponent.class)) {
+            CollectBlocksTaskComponent collectBlocksTaskComponent = taskEntity.getComponent(CollectBlocksTaskComponent.class);
+            EntityRef charEntity = taskEntity.getOwner().getComponent(ClientComponent.class).character;
+
+            InventoryComponent inventory = charEntity.getComponent(InventoryComponent.class);
+            for (EntityRef itemRef : inventory.itemSlots) {
+                ItemComponent item = itemRef.getComponent(ItemComponent.class);
+                if (item != null && item.stackId.equalsIgnoreCase(collectBlocksTaskComponent.itemId)) {
+                    collectBlocksTaskComponent.amountGathered += item.stackCount;
+                }
+
+                checkTargetAmount(taskEntity, collectBlocksTaskComponent);
+            }
+            taskEntity.saveComponent(collectBlocksTaskComponent);
+        }
     }
 
     @ReceiveEvent(components = {InventoryComponent.class})
@@ -93,28 +99,55 @@ public class CollectBlocksTaskSystem extends BaseComponentSystem {
     }
 
     private void onInventoryChange(EntityRef charEntity, String stackId, int amountChange) {
+        entityManager.getEntitiesWith(CollectBlocksTaskComponent.class).forEach(collectBlocksEntity -> {
+            if (collectBlocksEntity.getOwner().getOwner().equals(charEntity.getOwner())) {
+                if (collectBlocksEntity.getComponent(TaskComponent.class).taskStatus.equals(Status.ACTIVE)) {
+                    CollectBlocksTaskComponent collectBlocksTaskComponent = collectBlocksEntity.getComponent(CollectBlocksTaskComponent.class);
+                    if (collectBlocksTaskComponent.itemId.equalsIgnoreCase(stackId)) {
+                        collectBlocksTaskComponent.amountGathered += amountChange;
+                        checkTargetAmount(collectBlocksEntity, collectBlocksTaskComponent);
+                    }
+                }
+            }
+        });
+    }
 
-        Iterator<Entry<CollectBlocksTask, Quest>> it = tasks.entrySet().iterator();
-        while (it.hasNext()) {
-            Entry<CollectBlocksTask, Quest> entry = it.next();
-            CollectBlocksTask task = entry.getKey();
+    private void checkTargetAmount(EntityRef taskEntity, CollectBlocksTaskComponent taskComponent) {
+        if (taskComponent.amountGathered >= taskComponent.targetAmount) {
+            if (taskComponent.destroyItemsOnComplete) {
+                EntityRef character = taskEntity.getOwner().getOwner().getComponent(ClientComponent.class).character;
+                destroyItemOrBlock(character, taskComponent.itemId, taskComponent.targetAmount);
+            }
 
-            // consider using InventoryUtils.isSameItem(EntityRef, EntityRef)
-            if (stackId.equalsIgnoreCase(task.getItemId())) {
-                TaskGraph taskGraph = entry.getValue().getTaskGraph();
+            taskEntity.send(new EndTaskEvent(taskEntity.getComponent(TaskComponent.class), true));
+        }
+    }
 
-                Status prevStatus = taskGraph.getTaskStatus(task);
+    private boolean destroyItemOrBlock(EntityRef character, String name, int amount) {
+        EntityRef item = EntityRef.NULL;
+        for (int i = 0; i < inventoryManager.getNumSlots(character); i++) {
+            EntityRef current = inventoryManager.getItemInSlot(character, i);
 
-                task.setAmount(task.getAmount() + amountChange);
+            if (EntityRef.NULL.equals(current)) {
+                continue;
+            }
 
-                Status status = taskGraph.getTaskStatus(task);
-                if (prevStatus != status && status.isComplete()) {
-                    it.remove();
-                    EntityRef client = charEntity.getOwner();
-                    client.send(new TaskCompletedEvent(entry.getValue(), task, status.isSuccess()));
+            if (name.equalsIgnoreCase(current.getParentPrefab().getName())) {
+                item = current;
+                break;
+            }
+
+            if (current.getParentPrefab().getName().equalsIgnoreCase("engine:blockItemBase")) {
+                if (current.getComponent(BlockItemComponent.class).blockFamily.getURI().toString().equalsIgnoreCase(name)) {
+                    item = current;
+                    break;
                 }
             }
         }
+        if (item == EntityRef.NULL) {
+            return false;
+        }
 
+        return inventoryManager.removeItem(character, EntityRef.NULL, item, true, amount) == EntityRef.NULL;
     }
 }

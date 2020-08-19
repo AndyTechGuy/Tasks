@@ -16,24 +16,22 @@
 
 package org.terasology.tasks.systems;
 
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Map.Entry;
-
 import org.terasology.engine.Time;
+import org.terasology.entitySystem.entity.EntityManager;
 import org.terasology.entitySystem.entity.EntityRef;
+import org.terasology.entitySystem.event.EventPriority;
 import org.terasology.entitySystem.event.ReceiveEvent;
 import org.terasology.entitySystem.systems.BaseComponentSystem;
 import org.terasology.entitySystem.systems.RegisterMode;
 import org.terasology.entitySystem.systems.RegisterSystem;
 import org.terasology.entitySystem.systems.UpdateSubscriberSystem;
 import org.terasology.registry.In;
-import org.terasology.tasks.Quest;
-import org.terasology.tasks.Status;
-import org.terasology.tasks.Task;
-import org.terasology.tasks.TaskGraph;
-import org.terasology.tasks.TimeConstraintTask;
+import org.terasology.tasks.components.QuestComponent;
+import org.terasology.tasks.components.TaskComponent;
+import org.terasology.tasks.components.TimedTaskComponent;
+import org.terasology.tasks.events.EndQuestEvent;
+import org.terasology.tasks.events.EndTaskEvent;
+import org.terasology.tasks.events.QuestStartedEvent;
 import org.terasology.tasks.events.StartTaskEvent;
 import org.terasology.tasks.events.TaskCompletedEvent;
 
@@ -46,50 +44,47 @@ public class TimedTaskSystem extends BaseComponentSystem implements UpdateSubscr
     @In
     private Time time;
 
-    private final Map<TimeConstraintTask, Quest> questRefs = new LinkedHashMap<>();
+    @In
+    private EntityManager entityManager;
 
     @ReceiveEvent
-    public void onStartTask(StartTaskEvent event, EntityRef entity) {
-        if (event.getTask() instanceof TimeConstraintTask) {
-            TimeConstraintTask task = (TimeConstraintTask) event.getTask();
-            questRefs.put(task, event.getQuest());
-            task.startTimer(time.getGameTime());
-        }
+    public void onQuestStart(QuestStartedEvent event, EntityRef entity) {
+        QuestComponent questComponent = event.questEntity.getComponent(QuestComponent.class);
+        questComponent.taskList.stream()
+                .filter(taskEntity -> taskEntity.hasComponent(TimedTaskComponent.class))
+                .forEach(taskEntity -> {
+                        TimedTaskComponent timedTaskComponent = taskEntity.getComponent(TimedTaskComponent.class);
+                        if (timedTaskComponent.earlyStart) {
+                            timedTaskComponent.startTime = time.getGameTime();
+                            timedTaskComponent.timerRunning = true;
+                        }
+                });
     }
 
     @ReceiveEvent
-    public void onCompletedTask(TaskCompletedEvent event, EntityRef entity) {
-        Task task = event.getTask();
-        Iterator<Entry<TimeConstraintTask, Quest>> it = questRefs.entrySet().iterator();
-        while (it.hasNext()) {
-            Entry<TimeConstraintTask, Quest> entry = it.next();
-            TaskGraph taskGraph = entry.getValue().getTaskGraph();
-            if (taskGraph.getDependencies(task).contains(entry.getKey())) {
-                it.remove();
+    public void startTaskEvent(StartTaskEvent event, EntityRef taskEntity) {
+        if (taskEntity.hasComponent(TimedTaskComponent.class)) {
+            TimedTaskComponent timedTaskComponent = taskEntity.getComponent(TimedTaskComponent.class);
+
+            if (!timedTaskComponent.timerRunning) {
+                timedTaskComponent.startTime = time.getGameTime();
+                timedTaskComponent.timerRunning = true;
             }
         }
     }
 
     @Override
     public void update(float delta) {
-        Iterator<Entry<TimeConstraintTask, Quest>> it = questRefs.entrySet().iterator();
-        while (it.hasNext()) {
-            Entry<TimeConstraintTask, Quest> entry = it.next();
-            TimeConstraintTask task = entry.getKey();
+        for (EntityRef taskEntity : entityManager.getEntitiesWith(TimedTaskComponent.class)) {
+            TimedTaskComponent timedTaskComponent = taskEntity.getComponent(TimedTaskComponent.class);
+            if (timedTaskComponent.timerRunning) {
+                TaskComponent taskComponent = taskEntity.getComponent(TaskComponent.class);
+                if ((time.getGameTime() - timedTaskComponent.startTime) >= timedTaskComponent.targetTime) {
+                    timedTaskComponent.timerRunning = false;
+                    taskEntity.send(new EndTaskEvent(taskComponent, false));
+                }
 
-            TaskGraph taskGraph = entry.getValue().getTaskGraph();
-            Status prevStatus = taskGraph.getTaskStatus(task);
-
-            if (prevStatus == Status.SUCCEEDED) {
-                task.setTime(time.getGameTime());
-            }
-
-            Status status = taskGraph.getTaskStatus(task);
-            if (status != prevStatus && status.isComplete()) {
-                Quest quest = entry.getValue();
-                EntityRef entity = quest.getEntity();
-                entity.send(new TaskCompletedEvent(quest, task, status.isSuccess()));
-                it.remove();
+                taskComponent.suffix = String.valueOf((int) (timedTaskComponent.targetTime - (time.getGameTime() - timedTaskComponent.startTime)));
             }
         }
     }
